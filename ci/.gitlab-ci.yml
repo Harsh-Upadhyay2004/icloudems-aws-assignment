@@ -1,0 +1,38 @@
+stages:
+  - lint
+  - build
+  - test
+
+variables:
+  AWS_DEFAULT_REGION: "ap-south-1"
+
+lint:
+  stage: lint
+  image: alpine:3.19
+  script:
+    - echo "Linting IAM policies and shell scripts..."
+    - apk add --no-cache jq bash
+    - for f in iam/*.json; do jq empty "$f"; done
+    - bash -n scripts/copy_latest_rds_snapshot.sh
+    - echo "Lint passed!"
+
+build:
+  stage: build
+  image: docker:24.0
+  services:
+    - docker:24.0-dind
+  script:
+    - echo "Building Docker image for commit $CI_COMMIT_SHORT_SHA..."
+    - if [ -f docker/Dockerfile ]; then docker build -t erp-app:$CI_COMMIT_SHORT_SHA -f docker/Dockerfile docker/; else echo "Dockerfile will be added in Task 9"; fi
+
+test:
+  stage: test
+  image: alpine:3.19
+  script:
+    - echo "Running sanity checks on branch $CI_COMMIT_REF_NAME..."
+    - test -f README.md && test -f iam/dev-s3-answer-sheets-put.json
+    - echo "All tests passed!"
+  only:
+    - main
+    - develop
+    - /^feature\/.*$/
