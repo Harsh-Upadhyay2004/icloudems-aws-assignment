@@ -1,0 +1,8 @@
+{
+  "name": "icloudems/erp-web",
+  "description": "iCloudEMS University ERP Sample App",
+  "type": "project",
+  "require": {
+    "php": "^8.2"
+  }
+}
