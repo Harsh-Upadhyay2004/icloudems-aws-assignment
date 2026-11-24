@@ -1,0 +1,19 @@
+# AWS & Secrets
+.env
+.env.*
+*.pem
+*.ppk
+*.key
+credentials
+*aws_credentials*
+*.tfvars
+.terraform/
+
+# Docker & Local Dev
+vendor/
+node_modules/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
