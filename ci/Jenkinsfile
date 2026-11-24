@@ -1,0 +1,72 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_REGION   = 'ap-south-1'
+        AWS_ACCOUNT  = '908027384709'
+        ECR_REGISTRY = "${AWS_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        ECR_REPO     = "${ECR_REGISTRY}/icloudems-erp"
+        ASG_NAME     = 'icloudems-erp-asg'
+        GITLAB_URL   = 'https://gitlab.com/h.upadhyay13082004/icloudems-aws-assignment.git'
+    }
+
+    stages {
+        stage('1. Checkout from GitLab') {
+            steps {
+                git branch: 'develop', url: "${GITLAB_URL}"
+                script {
+                    env.GIT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                }
+            }
+        }
+
+        stage('2. Build Docker Image (Task 9)') {
+            steps {
+                sh """
+                    docker build -t ${ECR_REPO}:${GIT_SHA} -t ${ECR_REPO}:latest -f docker/Dockerfile docker/
+                """
+            }
+        }
+
+        stage('3. Push to Amazon ECR') {
+            steps {
+                sh """
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                    docker push ${ECR_REPO}:${GIT_SHA}
+                    docker push ${ECR_REPO}:latest
+                """
+            }
+        }
+
+        stage('4. Deploy (ASG Instance Refresh)') {
+            steps {
+                sh """
+                    aws autoscaling start-instance-refresh \
+                      --region ${AWS_REGION} \
+                      --auto-scaling-group-name ${ASG_NAME} \
+                      --preferences '{"MinHealthyPercentage":50,"InstanceWarmup":120}'
+                """
+            }
+        }
+    }
+
+    post {
+        failure {
+            echo "Pipeline failed for commit ${env.GIT_SHA}."
+            script {
+                if (env.SLACK_WEBHOOK_URL) {
+                    withCredentials([string(credentialsId: 'slack-webhook-url', variable: 'SLACK_URL')]) {
+                        sh '''
+                            curl -s -X POST -H 'Content-type: application/json' \
+                              --data "{\\"text\\":\\":x: Jenkins build failed for ${JOB_NAME} (#${BUILD_NUMBER})\\"}" \
+                              "$SLACK_URL"
+                        '''
+                    }
+                }
+            }
+        }
+        success {
+            echo "Deployed ${ECR_REPO}:${env.GIT_SHA} and triggered ASG Instance Refresh."
+        }
+    }
+}
